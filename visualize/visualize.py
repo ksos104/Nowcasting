@@ -15,7 +15,6 @@ fig = plt.figure()
 camera = Camera(fig)
 ax = fig.add_subplot(projection = ccrs.PlateCarree())
 
-
 for img in vid :
     ax.set_extent([122,131.1,43,33]) 
     ax.coastlines('50m')
