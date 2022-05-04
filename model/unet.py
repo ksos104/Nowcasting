@@ -31,7 +31,7 @@ def decoder_block(in_channel, hidden_channel, kernel_size=3, stride=1, padding=1
 
 
 class unet(nn.Module):
-    def __init__(self, in_channel, hidden_channel, out_channel):
+    def __init__(self, in_channel, out_channel, hidden_channel=16):
         super().__init__()
         self.encoder0 = encoder_block(in_channel, hidden_channel)
         self.maxPool0 = nn.MaxPool2d(kernel_size=2, stride=2)
@@ -85,7 +85,7 @@ class unet(nn.Module):
 
 
 if __name__ == '__main__':
-    model = unet(13, 16, 12)    ## unet(num_input_frames, first_hidden_channel, num_output_frames)
+    model = unet(13, 12)    ## unet(num_input_frames, num_output_frames)
     print(model)
 
     input = torch.rand((1, 13, 384, 384))
