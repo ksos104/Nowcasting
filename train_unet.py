@@ -13,8 +13,11 @@ import torch.nn as nn
 import torch.multiprocessing as mp
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.utils.data import DataLoader
+from torchvision import transforms
 
 from model import unet
+from utils import get_dataloader
 
 import neptune.new as neptune
 
@@ -25,12 +28,11 @@ def get_args():
 
     parser.add_argument('--n_gpus', type=int, help='Number of gpus you need', default=1)
     parser.add_argument('--data_path', type=str, help='Path for dataset you want to use. Absolute path is recomended')
-    parser.add_argument('--batch_size', type=int, help='Total batch size')
-    parser.add_argument('--n_workers', type=int, help='Number of subprocesses for data loading')
-    parser.add_argument('--img_size', type=int, help='Enter a size of input images for network model. Default=400', default=400)
+    parser.add_argument('--batch_size', type=int, help='Total batch size', default=1)
+    parser.add_argument('--n_workers', type=int, help='Number of subprocesses for data loading', default=4)
     parser.add_argument('--lr', type=float, help='Learning rate', default=1e-3)
     parser.add_argument('--wd', type=float, help='Weight decay', default=1e-4)
-    parser.add_argument('--total_epoch', type=int, help='Number of total epoch')
+    parser.add_argument('--total_epoch', type=int, help='Number of total epoch', default=1)
     parser.add_argument('--load', type=str, help='Model path. ex) 2022-01-01', default=None)
     parser.add_argument('--seed', type=int, help='Seed for all random function', default=212)
     parser.add_argument('--input_frames', type=int, help='Number of input past frames', default=13)
@@ -50,14 +52,18 @@ def train(args, model, dataloader, optimizer, epoch, total_epoch, gpu, npt):
 
     for iter, batch in pbar:
         ## Get input frames
-        input_frames = batch.cuda() if torch.cuda.is_available() else batch
-        target_frames = batch.cuda() if torch.cuda.is_available() else batch
+        input_frames = batch[0].cuda() if torch.cuda.is_available() else batch
+        target_frames = batch[1].cuda() if torch.cuda.is_available() else batch
+        input_frames = input_frames.squeeze(dim=2)
+        target_frames = target_frames.squeeze(dim=2)
+        input_frames = input_frames.type(torch.float)
+        target_frames = target_frames.type(torch.float)
 
         ## Model forwarding
         outputs = model(input_frames)
 
         ## Loss calculation (Mean Absolute Error; MAE)
-        loss = criterion(outputs, target_frames) / torch.std(batch)
+        loss = criterion(outputs, target_frames) / torch.std(torch.cat([input_frames, target_frames], dim=1))         ## 원래 training set 전체의 std로 나눠줌.
         sum_loss += loss
 
         ## Optimizer update
@@ -100,14 +106,18 @@ def val(args, model, dataloader, epoch, total_epoch, gpu, npt):
     with torch.no_grad():
         for iter, batch in pbar:
             ## Get input frames
-            input_frames = batch.cuda() if torch.cuda.is_available() else batch
-            target_frames = batch.cuda() if torch.cuda.is_available() else batch
+            input_frames = batch[0].cuda() if torch.cuda.is_available() else batch
+            target_frames = batch[1].cuda() if torch.cuda.is_available() else batch
+            input_frames = input_frames.squeeze(dim=2)
+            target_frames = target_frames.squeeze(dim=2)
+            input_frames = input_frames.type(torch.float)
+            target_frames = target_frames.type(torch.float)
             
             ## Model forwarding
             outputs = model(input_frames)
 
             ## Loss calculation (Mean Absolute Error; MAE)
-            loss = criterion(outputs, target_frames) / torch.std(batch)
+            loss = criterion(outputs, target_frames) / torch.std(torch.cat([input_frames, target_frames], dim=1))         ## 원래 training set 전체의 std로 나눠줌.
             sum_loss += loss
 
             ## Calculate sth by metric
@@ -142,15 +152,15 @@ def main_worker(rank, args):
 
     if rank == 0:
         npt = neptune.init(
-        project="",
-        api_token="",
+        project="kaist-cilab/Nowcasting",
+        api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiI4OTQ2MGY0Yi0zMTM2LTQ5ZmEtYjlmOS1lNmQxMTliOTE0MjkifQ==",
         )
 
     # torch.cuda.set_device(gpu)
-
     ngpus = args.n_gpus
     world_size = ngpus * 1      # Number of nodes = 1
     batch_size = int(args.batch_size / ngpus)
+    n_workers = args.n_workers
 
     if args.load:
         now = args.load
@@ -169,14 +179,7 @@ def main_worker(rank, args):
     )
 
     ## Dataloader initialization
-    '''
-        🔥🔥 DATA LODADER INIT 🔥🔥
-    '''
-    dataloader_train = ...
-    dataloader_val = ...
-    '''
-        🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥
-    '''
+    dataloader_train, dataloader_val, renorm_transform = get_dataloader(data_set_name='KTPW', batch_size=batch_size, data_set_dir=args.data_path, past_frames=args.input_frames, future_frames=args.output_frames, ngpus=ngpus, num_workers=n_workers)
 
     ## Network model initialization
     model = unet(args.input_frames, args.output_frames)

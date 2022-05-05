@@ -80,8 +80,8 @@ class KTPWDataset(Dataset):
         #imgs[0].save('full_clip.gif', save_all = True, append_images = imgs[1:]) # plotting full video
         full_clip = self.transform(imgs)
         
-        past_clip = full_clip[0:num_past_frames, ...]
-        future_clip = full_clip[num_past_frames:, ...]  
+        past_clip = full_clip[0:self.num_past_frames, ...]
+        future_clip = full_clip[self.num_past_frames:, ...]  
         
         return past_clip, future_clip
 

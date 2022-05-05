@@ -1,0 +1,4 @@
+.neptune
+slurm_out
+slurm_err
+__pycache__
