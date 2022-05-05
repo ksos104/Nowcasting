@@ -1,8 +1,11 @@
+from sklearn.preprocessing import binarize
 import torch
 from torch import nn
 import torch.nn.functional as F
 from torch import Tensor
 from typing import Union
+
+from zmq import POLLITEMS_DFLT
 from .train_summary import load_ckpt
 
 import numpy as np
@@ -56,6 +59,40 @@ def MAE(y_pred : Tensor, y_true: Tensor, per_frame = False) -> Tensor:
         mae= mae.mean()
 
     return mae
+
+def compute_stats(y_pred : Tensor, y_true: Tensor, threshold : int):
+    binarized_y_pred = torch.zeros_like(y_pred)
+    binarized_y_pred[y_pred > threshold] = 1
+
+    binarized_y_true = torch.zeros_like(y_true)
+    binarized_y_true[y_true > threshold] = 1
+
+    hits = (binarized_y_pred * binarized_y_true).sum(axis = [0,2,3]) # (prediciton = 1, truth = 1)
+    misses = ((1 - binarized_y_pred) * binarized_y_true).sum(axis = [0,2,3]) # (prediciton = 0, truth = 1)
+    false_alarms = (binarized_y_pred * (1-binarized_y_true)).sum(axis = [0,2,3]) # (prediciton = 1, truth = 0)
+
+    POD = hits/(hits + misses)
+    SUCR = hits/(hits+false_alarms)
+    CSI = hits/(hits+misses+false_alarms)
+    BIAS = (hits+false_alarms)/(hits + misses)
+
+    return POD, SUCR, CSI, BIAS
+
+
+def weather_metrics(y_pred: Tensor, y_true : Tensor, thresholds = [16,74,133,160,181,219]):
+    # convert to 255 scale
+    y_pred = y_pred * 255
+    y_true = y_true * 255
+
+    score = {}
+    for threshold in thresholds:
+        POD,SUCR,CSI,BIAS = compute_stats(y_pred,y_true,threshold)
+        score['POD%d'%threshold] = POD
+        score['SUCR%d'%threshold] = SUCR
+        score['CSI%d'%threshold] = CSI
+        score['BIAS%d'%threshold] = BIAS
+
+    return score
 
 
 class SSIM(torch.nn.Module):
@@ -122,6 +159,10 @@ class SSIM(torch.nn.Module):
             return ssim_map.mean()
         else:
             return ssim_map.mean(1).mean(1).mean(1)
+
+
+
+
 
 def pred_ave_metrics(model, data_loader, metric_func, renorm_transform, num_future_frames, ckpt = None, device = 'cuda:0'):
     if ckpt is not None:

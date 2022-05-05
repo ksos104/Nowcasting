@@ -17,7 +17,7 @@ from torch.utils.data import DataLoader
 from torchvision import transforms
 
 from model import unet
-from utils import get_dataloader, MSE, MAE
+from utils import get_dataloader, MSE, MAE, weather_metrics
 
 import neptune.new as neptune
 
@@ -46,13 +46,12 @@ def get_args():
 def train(args, model, dataloader, optimizer, epoch, total_epoch, gpu, npt):
     sum_loss = 0.0
     total_iters = len(dataloader)
-    future_frames = 12
-    device = torch.device( "cuda" if torch.cuda.is_available() else "cpu" )
     ## tqdm initialization
     pbar = tqdm(enumerate(dataloader), total=total_iters)
+    
     train_score = {}
-    train_score_accumulate = {key : torch.zeros([future_frames], device = device) for key in ('mse','mae')}
-
+    train_score_accumulate = {}
+    
     for iter, batch in pbar:
         ## Get input frames
         input_frames = batch[0].cuda() if torch.cuda.is_available() else batch
@@ -75,19 +74,23 @@ def train(args, model, dataloader, optimizer, epoch, total_epoch, gpu, npt):
         loss.backward()
         optimizer.step()
 
-        ## Calculate sth by metric
+        ## Calculaet weather metric
+        train_score = weather_metrics(outputs,target_frames)
+
+        ## Calculate perceptual metric
         train_score['mse'] = MSE(outputs, target_frames)
         train_score['mae'] = MAE(outputs, target_frames)
 
-        train_score_accumulate['mse'] += train_score['mse'] * batch_size
-        train_score_accumulate['mae'] += train_score['mse'] * batch_size
+        for key in train_score.keys():
+            train_score_accumulate[key] = train_score_accumulate[key] + train_score[key] * batch_size if key in train_score_accumulate.keys() else train_score[key] * batch_size
 
         ## tqdm update
         pbar.set_description(f"Training >> Epoch: [{epoch+1}/{total_epoch}] Iter: [{iter+1}/{total_iters}] Loss: {loss:.4f}({sum_loss / (iter+1):.4f})", refresh=False)
 
     avg_loss = sum_loss / (iter+1)
-    train_score_accumulate['mse'] /= len(dataloader.dataset)
-    train_score_accumulate['mae'] /= len(dataloader.dataset)
+    for key in train_score.keys():
+         train_score_accumulate[key] /= len(dataloader.dataset)
+
     ## Neptune log
     if gpu == 0:
         npt["train/avg_loss"].log(avg_loss)
@@ -106,6 +109,9 @@ def val(args, model, dataloader, epoch, total_epoch, gpu, npt):
     ## tqdm initialization
     pbar = tqdm(enumerate(dataloader), total=total_iters)
 
+    val_score = {}
+    val_score_accumulate = {}
+
     with torch.no_grad():
         for iter, batch in pbar:
             ## Get input frames
@@ -115,6 +121,7 @@ def val(args, model, dataloader, epoch, total_epoch, gpu, npt):
             target_frames = target_frames.squeeze(dim=2)
             input_frames = input_frames.type(torch.float)
             target_frames = target_frames.type(torch.float)
+            batch_size = input_frames.shape[0]
             
             ## Model forwarding
             outputs = model(input_frames)
@@ -123,19 +130,22 @@ def val(args, model, dataloader, epoch, total_epoch, gpu, npt):
             loss = criterion(outputs, target_frames) / torch.std(torch.cat([input_frames, target_frames], dim=1))         ## 원래 training set 전체의 std로 나눠줌.
             sum_loss += loss
 
-            ## Calculate sth by metric
-            '''
-                🔥🔥 METRIC 🔥🔥
-            '''
-            ...
-            '''
-                🔥🔥🔥🔥🔥🔥🔥🔥
-            '''
+            ## Calculaet weather metric
+            val_score = weather_metrics(outputs,target_frames)
+
+            ## Calculate perceptual metric
+            val_score['mse'] = MSE(outputs, target_frames)
+            val_score['mae'] = MAE(outputs, target_frames)
+
+            for key in val_score.keys():
+                val_score_accumulate[key] = val_score_accumulate[key] + val_score[key] * batch_size if key in val_score_accumulate.keys() else val_score[key] * batch_size
 
             ## tqdm update
             pbar.set_description(f"Valid >> Epoch: [{epoch+1}/{total_epoch}] Iter: [{iter+1}/{total_iters}] Loss: {loss:.4f}({sum_loss / (iter+1):.4f})", refresh=False)
 
     avg_loss = sum_loss / (iter+1)
+    for key in val_score.keys():
+        val_score_accumulate[key] /= len(dataloader.dataset)
 
     ## Neptune log
     if gpu == 0:
