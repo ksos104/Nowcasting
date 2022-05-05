@@ -4,3 +4,6 @@ python == 3.8.12 \
 torch == 1.11.0 \
 tqdm \
 neptune-client \
+opencv-python \
+timm \
+einops \ 
