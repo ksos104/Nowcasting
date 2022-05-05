@@ -17,7 +17,7 @@ from torch.utils.data import DataLoader
 from torchvision import transforms
 
 from model import unet
-from utils import get_dataloader
+from utils import get_dataloader, MSE, MAE
 
 import neptune.new as neptune
 
@@ -46,9 +46,12 @@ def get_args():
 def train(args, model, dataloader, optimizer, epoch, total_epoch, gpu, npt):
     sum_loss = 0.0
     total_iters = len(dataloader)
-
+    future_frames = 12
+    device = torch.device( "cuda" if torch.cuda.is_available() else "cpu" )
     ## tqdm initialization
     pbar = tqdm(enumerate(dataloader), total=total_iters)
+    train_score = {}
+    train_score_accumulate = {key : torch.zeros([future_frames], device = device) for key in ('mse','mae')}
 
     for iter, batch in pbar:
         ## Get input frames
@@ -72,19 +75,18 @@ def train(args, model, dataloader, optimizer, epoch, total_epoch, gpu, npt):
         optimizer.step()
 
         ## Calculate sth by metric
-        '''
-            🔥🔥 METRIC 🔥🔥
-        '''
-        ...
-        '''
-            🔥🔥🔥🔥🔥🔥🔥🔥
-        '''
+        train_score['mse'] = MSE(outputs, target_frames)
+        train_score['mae'] = MAE(outputs, target_frames)
+
+        train_score_accumulate['mse'] += train_score['mse'] * batch_size
+        train_score_accumulate['mae'] += train_score['mse'] * batch_size
 
         ## tqdm update
         pbar.set_description(f"Training >> Epoch: [{epoch+1}/{total_epoch}] Iter: [{iter+1}/{total_iters}] Loss: {loss:.4f}({sum_loss / (iter+1):.4f})", refresh=False)
 
     avg_loss = sum_loss / (iter+1)
-    
+    train_score_accumulate['mse'] /= len(dataloader.dataset)
+    train_score_accumulate['mae'] /= len(dataloader.dataset)
     ## Neptune log
     if gpu == 0:
         npt["train/avg_loss"].log(avg_loss)

@@ -27,17 +27,35 @@ def PSNR(x: Tensor, y: Tensor, data_range: Union[float, int] = 1.0) -> Tensor:
 
     return torch.mean(score).item()
 
-def MSEScore(x: Tensor, y: Tensor) -> Tensor:
-    """
-    Comput the average PSNR between two batch of images.
-    x: input image, Tensor with shape (N, C, H, W)
-    y: input image, Tensor with shape (N, C, H, W)
-    data_range: the maximum pixel value range of input images, used to normalize
-                pixel values to [0,1], default is 1.0
-    """
-    mse = torch.sum((x-y)**2, dim = (1, 2, 3))
 
-    return torch.mean(mse).item()
+def MSE(y_pred : Tensor, y_true: Tensor, per_frame = False) -> Tensor:
+    """
+    Args:
+        y_pred : Tenswor with shape (batch_size, num_future_frames, H, W)
+        y_true : Tenswor with shape (batch_size, num_future_frames, H, W)
+    Return :
+        MAE score between (y_pred,y_true) per frames. 
+    """
+    
+    mse = (y_pred - y_true).square().mean(axis = [0,2,3])
+    if per_frame :
+        mse = mse.mean()
+
+    return mse
+
+def MAE(y_pred : Tensor, y_true: Tensor, per_frame = False) -> Tensor:
+    """
+    Args:
+        y_pred : Tenswor with shape (batch_size, num_future_frames, H, W)
+        y_true : Tenswor with shape (batch_size, num_future_frames, H, W)
+    Return :
+        MAE score between (y_pred,y_true)
+    """
+    mae = (y_pred - y_true).abs().mean(axis = [0,2,3])
+    if per_frame :
+        mae= mae.mean()
+
+    return mae
 
 
 class SSIM(torch.nn.Module):
