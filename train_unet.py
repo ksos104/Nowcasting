@@ -61,6 +61,7 @@ def train(args, model, dataloader, optimizer, epoch, total_epoch, gpu, npt):
         target_frames = target_frames.squeeze(dim=2)
         input_frames = input_frames.type(torch.float)
         target_frames = target_frames.type(torch.float)
+        batch_size = input_frames.shape[0]
 
         ## Model forwarding
         outputs = model(input_frames)
