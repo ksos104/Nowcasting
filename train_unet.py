@@ -16,7 +16,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader
 from torchvision import transforms
 
-from model import unet
+from model import unet,EncDec,Tunet
 from utils import get_dataloader, MSE, MAE, weather_metrics
 
 import neptune.new as neptune

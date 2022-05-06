@@ -2,3 +2,5 @@ from .criterion import GDL, temporal_weight_func, MSELoss, BiPatchNCE, L1Loss, G
 from .VPTR_modules import VPTREnc, VPTRDec, VPTRDisc, VPTRFormerNAR, VPTRFormerFAR
 from .ResNetAutoEncoder import init_weights
 from .unet import unet
+from .EncDec import Encdec
+from .Tunet import Tunet
