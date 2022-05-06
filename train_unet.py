@@ -44,7 +44,7 @@ def get_args():
     return args
 
 
-def train(args, model, dataloader, optimizer, epoch, total_epoch, gpu, npt):
+def train(args, model, dataloader, optimizer, epoch, total_epoch, rank, npt):
     sum_loss = 0.0
     total_iters = len(dataloader)
     ## tqdm initialization
@@ -79,21 +79,22 @@ def train(args, model, dataloader, optimizer, epoch, total_epoch, gpu, npt):
         train_score = weather_metrics(outputs,target_frames)
 
         ## Calculate perceptual metric
-        train_score['mse'] = MSE(outputs, target_frames)
-        train_score['mae'] = MAE(outputs, target_frames)
+        train_score['mse'] = MSE(outputs, target_frames).detach().cpu()
+        train_score['mae'] = MAE(outputs, target_frames).detach().cpu()
 
         for key in train_score.keys():
-            train_score_accumulate[key] = train_score_accumulate[key] + train_score[key] * batch_size if key in train_score_accumulate.keys() else train_score[key] * batch_size
+            train_score_accumulate[key] = train_score_accumulate[key] + train_score[key].detach().cpu() * batch_size if key in train_score_accumulate.keys() else train_score[key].detach().cpu() * batch_size
 
         ## tqdm update
         pbar.set_description(f"Training >> Epoch: [{epoch+1}/{total_epoch}] Iter: [{iter+1}/{total_iters}] Loss: {loss:.4f}({sum_loss / (iter+1):.4f})", refresh=False)
+    dist.barrier()
 
     avg_loss = sum_loss / (iter+1)
     for key in train_score.keys():
          train_score_accumulate[key] /= len(dataloader.dataset)
 
     ## Neptune log
-    if gpu == 0:
+    if rank == 0:
         npt["train/avg_loss"].log(avg_loss)
 
         print(f"Training DONE. Epoch: {epoch}, Avg loss: {avg_loss:.4f}")
@@ -101,7 +102,7 @@ def train(args, model, dataloader, optimizer, epoch, total_epoch, gpu, npt):
     return
 
 
-def val(args, model, dataloader, epoch, total_epoch, gpu, npt):
+def val(args, model, dataloader, epoch, total_epoch, rank, npt):
     model.eval()
 
     sum_loss = 0.0
@@ -135,21 +136,22 @@ def val(args, model, dataloader, epoch, total_epoch, gpu, npt):
             val_score = weather_metrics(outputs,target_frames)
 
             ## Calculate perceptual metric
-            val_score['mse'] = MSE(outputs, target_frames)
-            val_score['mae'] = MAE(outputs, target_frames)
+            val_score['mse'] = MSE(outputs, target_frames).detach().cpu()
+            val_score['mae'] = MAE(outputs, target_frames).detach().cpu()
 
             for key in val_score.keys():
-                val_score_accumulate[key] = val_score_accumulate[key] + val_score[key] * batch_size if key in val_score_accumulate.keys() else val_score[key] * batch_size
+                val_score_accumulate[key] = val_score_accumulate[key] + val_score[key].detach().cpu() * batch_size if key in val_score_accumulate.keys() else val_score[key].detach().cpu() * batch_size
 
             ## tqdm update
             pbar.set_description(f"Valid >> Epoch: [{epoch+1}/{total_epoch}] Iter: [{iter+1}/{total_iters}] Loss: {loss:.4f}({sum_loss / (iter+1):.4f})", refresh=False)
+        dist.barrier()
 
     avg_loss = sum_loss / (iter+1)
     for key in val_score.keys():
         val_score_accumulate[key] /= len(dataloader.dataset)
 
     ## Neptune log
-    if gpu == 0:
+    if rank == 0:
         npt["val/avg_loss"].log(avg_loss)
 
         print(f"Validation done. Epoch: {epoch}, Avg loss: {avg_loss:.4f}")
@@ -181,16 +183,18 @@ def main_worker(rank, args):
     else:
         now = time.strftime(r'%Y-%m-%d_%H-%M',time.localtime(time.time()))
 
-    model_save_path = os.path.join('trained', now)
-    os.makedirs(model_save_path, exist_ok=True) 
+    if rank == 0:
+        model_save_path = os.path.join('trained', now)
+        os.makedirs(model_save_path, exist_ok=True) 
 
     ## Process group initialization for DDP
     dist.init_process_group(
         backend='nccl',
-        init_method='tcp://127.0.0.1:7389',
+        init_method='tcp://127.0.0.1:2616',
         world_size=world_size,
         rank=rank
     )
+    dist.barrier()
 
     ## Dataloader initialization
     dataloader_train, dataloader_val, renorm_transform = get_dataloader(data_set_name='KTPW', batch_size=batch_size, data_set_dir=args.data_path, past_frames=args.input_frames, future_frames=args.output_frames, ngpus=ngpus, num_workers=n_workers)
