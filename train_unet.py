@@ -187,7 +187,7 @@ def main_worker(rank, args):
     ## Process group initialization for DDP
     dist.init_process_group(
         backend='nccl',
-        init_method='tcp://127.0.0.1:12345',
+        init_method='tcp://127.0.0.1:7389',
         world_size=world_size,
         rank=rank
     )
