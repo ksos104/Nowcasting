@@ -37,6 +37,7 @@ def get_args():
     parser.add_argument('--seed', type=int, help='Seed for all random function', default=212)
     parser.add_argument('--input_frames', type=int, help='Number of input past frames', default=13)
     parser.add_argument('--output_frames', type=int, help='Number of output future frames', default=12)
+    parser.add_argument('--model', type=str, help='Select model [encdec, unet, tunet]', choices=['encdec', 'unet', 'tunet'], default='unet')
 
     args = parser.parse_args()
 
@@ -195,7 +196,12 @@ def main_worker(rank, args):
     dataloader_train, dataloader_val, renorm_transform = get_dataloader(data_set_name='KTPW', batch_size=batch_size, data_set_dir=args.data_path, past_frames=args.input_frames, future_frames=args.output_frames, ngpus=ngpus, num_workers=n_workers)
 
     ## Network model initialization
-    model = unet(args.input_frames, args.output_frames)
+    if args.model == 'encdec':
+        model = EncDec(args.input_frames, args.output_frames)
+    elif args.model == 'unet':
+        model = unet(args.input_frames, args.output_frames)
+    elif args.model == 'tunet':
+        model = Tunet(args.input_frames, args.output_frames)
     if torch.cuda.is_available():
         model = model.cuda()
     model = DDP(model, device_ids=[rank], find_unused_parameters=True)
