@@ -7,3 +7,5 @@ neptune-client \
 opencv-python \
 timm \
 einops \ 
+zmq \
+scikit-learn \

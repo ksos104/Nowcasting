@@ -29,7 +29,7 @@ def get_dataloader(data_set_name, batch_size, data_set_dir, past_frames = 10, fu
     val_loader = DataLoader(val_set, batch_size=N, shuffle=True, num_workers=num_workers, drop_last = True)
 
     if ngpus > 1:
-        N = batch_size//ngpus
+        # N = batch_size//ngpus
         train_sampler = torch.utils.data.distributed.DistributedSampler(train_set)
         val_sampler = torch.utils.data.distributed.DistributedSampler(val_set)
 

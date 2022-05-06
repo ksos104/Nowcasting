@@ -169,7 +169,7 @@ def main_worker(rank, args):
         api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiI4OTQ2MGY0Yi0zMTM2LTQ5ZmEtYjlmOS1lNmQxMTliOTE0MjkifQ==",
         )
 
-    # torch.cuda.set_device(gpu)
+    torch.cuda.set_device(rank)
     ngpus = args.n_gpus
     world_size = ngpus * 1      # Number of nodes = 1
     batch_size = int(args.batch_size / ngpus)
