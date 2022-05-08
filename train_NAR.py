@@ -9,14 +9,15 @@ import torch.nn.functional as F
 from pathlib import Path
 import random
 from datetime import datetime
+#from utils import KTPWDataset
+from utils.dataset1 import get_dataloader
 
 from model import VPTREnc, VPTRDec, VPTRDisc, init_weights, VPTRFormerNAR
 from model import GDL, MSELoss, L1Loss, GANLoss, BiPatchNCE
-from utils import KTHDataset, BAIRDataset, MovingMNISTDataset, write_code_files
-from utils import VidCenterCrop, VidPad, VidResize, VidNormalize, VidReNormalize, VidCrop, VidRandomHorizontalFlip, VidRandomVerticalFlip, VidToTensor
 from utils import visualize_batch_clips, save_ckpt, load_ckpt, set_seed, AverageMeters, init_loss_dict, write_summary, resume_training
-from utils import set_seed, get_dataloader
-
+from utils import set_seed
+#from utils import set_seed, get_dataloader
+from tqdm import tqdm
 import logging
 
 def cal_lossD(VPTR_Disc, fake_imgs, real_imgs, lam_gan):
@@ -137,11 +138,11 @@ def NAR_show_samples(VPTR_Enc, VPTR_Dec, VPTR_Transformer, sample, save_dir):
 
 
 if __name__ == '__main__':
-    set_seed(2021)
+    set_seed(3407)
 
-    ckpt_save_dir = Path('/home/travail/xiyex/VPTR_ckpts/BAIR_NAR_MSEGDL_BPNCE01_RPE_ckpt')
-    tensorboard_save_dir = Path('/home/travail/xiyex/VPTR_ckpts/BAIR_NAR_MSEGDL_BPNCE01_RPE_tensorboard')
-    resume_AE_ckpt = Path('/home/travail/xiyex/VPTR_ckpts/BAIR_ResNetAE_MSEGDL_ckpt').joinpath('epoch_64.tar')
+    ckpt_save_dir = Path('./KTPW_exp1')
+    tensorboard_save_dir = Path('./kor_RPE_tensorboard')
+    resume_AE_ckpt = Path('./bin/KTPW_AE2').joinpath('epoch_1.tar')
     #resume_ckpt = ckpt_save_dir.joinpath('epoch_88.tar')
     resume_ckpt = None
 
@@ -156,33 +157,34 @@ if __name__ == '__main__':
 
     start_epoch = 0
 
-    summary_writer = SummaryWriter(tensorboard_save_dir.absolute().as_posix())
-    num_past_frames = 2
-    num_future_frames = 10
+    #summary_writer = SummaryWriter(tensorboard_save_dir.absolute().as_posix())
+    num_past_frames = 13
+    num_future_frames = 12
     encH, encW, encC = 8, 8, 528
-    img_channels = 3
+    img_channels = 1
     epochs = 100
-    N = 16
+    N = 1
     #AE_lr = 2e-4
     Transformer_lr = 1e-4
     max_grad_norm = 1.0 
     TSLMA_flag = False
     rpe = True
-    padding_type = 'zero'
+    padding_type = 'reflect'
 
     lam_gan = None #0.001
     lam_pc = 0.1
-    device = torch.device('cuda:0')
+    device = torch.device('cuda')
 
-    show_example_epochs = 10
-    save_ckpt_epochs = 2
+    show_example_epochs = 1
+    save_ckpt_epochs = 1
 
     #####################Init Dataset ###########################
-    data_set_name = 'BAIR'
-    dataset_dir = '/home/travail/xiyex/BAIR'
-    test_past_frames = 2
-    test_future_frames = 10
-    train_loader, val_loader, test_loader, renorm_transform = get_dataloader(data_set_name, N, dataset_dir, test_past_frames, test_future_frames)
+    data_set_name = 'KTPW'
+    dataset_dir = '/mnt/server14_hard0/dlsfbtp/dataset/korea/sliding_numpy_data'
+    test_past_frames = 13
+    test_future_frames = 12
+    print(">>> Data loading... ")
+    train_loader, val_loader, renorm_transform = get_dataloader(data_set_name, N, dataset_dir, test_past_frames, test_future_frames)
 
     #####################Init model###########################
     VPTR_Enc = VPTREnc(img_channels, feat_dim = encC, n_downsampling = 3, padding_type = padding_type).to(device)
@@ -214,23 +216,24 @@ if __name__ == '__main__':
 
     #load the trained autoencoder, we initialize the discriminator from scratch, for a balanced training
     loss_dict, start_epoch = resume_training({'VPTR_Enc': VPTR_Enc, 'VPTR_Dec': VPTR_Dec}, {}, resume_AE_ckpt, loss_name_list)
-
+    
     if resume_ckpt is not None:
         loss_dict, start_epoch = resume_training({'VPTR_Transformer': VPTR_Transformer}, 
                                                 {'optimizer_T':optimizer_T}, resume_ckpt, loss_name_list)
     
     #####################Train ################################
+    print('>>> start training ')
     for epoch in range(start_epoch+1, start_epoch + epochs+1):
         epoch_st = datetime.now()
         
         #Train
         EpochAveMeter = AverageMeters(loss_name_list)
-        for idx, sample in enumerate(train_loader, 0):
+        for idx, sample in enumerate(tqdm(train_loader), 0):
             iter_loss_dict = single_iter(VPTR_Enc, VPTR_Dec, VPTR_Disc, VPTR_Transformer, optimizer_T, optimizer_D, sample, device, train_flag = True)
             EpochAveMeter.iter_update(iter_loss_dict)
             
         loss_dict = EpochAveMeter.epoch_update(loss_dict, epoch, train_flag = True)
-        write_summary(summary_writer, loss_dict, train_flag = True)
+        #write_summary(summary_writer, loss_dict, train_flag = True)
 
         if epoch % show_example_epochs == 0 or epoch == 1:
             NAR_show_samples(VPTR_Enc, VPTR_Dec, VPTR_Transformer, sample, ckpt_save_dir.joinpath(f'train_gifs_epoch{epoch}'))
@@ -241,7 +244,7 @@ if __name__ == '__main__':
             iter_loss_dict = single_iter(VPTR_Enc, VPTR_Dec, VPTR_Disc, VPTR_Transformer, optimizer_T, optimizer_D, sample, device, train_flag = False)
             EpochAveMeter.iter_update(iter_loss_dict)
         loss_dict = EpochAveMeter.epoch_update(loss_dict, epoch, train_flag = False)
-        write_summary(summary_writer, loss_dict, train_flag = False)
+        #write_summary(summary_writer, loss_dict, train_flag = False)
 
         if epoch % save_ckpt_epochs == 0:
             save_ckpt({'VPTR_Transformer': VPTR_Transformer}, 
@@ -249,7 +252,7 @@ if __name__ == '__main__':
                     epoch, loss_dict, ckpt_save_dir)
         
         if epoch % show_example_epochs == 0 or epoch == 1:
-            for idx, sample in enumerate(test_loader, random.randint(0, len(test_loader) - 1)):
+            for idx, sample in enumerate(val_loader, random.randint(0, len(test_loader) - 1)):
                 NAR_show_samples(VPTR_Enc, VPTR_Dec, VPTR_Transformer, sample, ckpt_save_dir.joinpath(f'test_gifs_epoch{epoch}'))
                 break
             
