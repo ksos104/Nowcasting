@@ -184,7 +184,7 @@ def main_worker(rank, args):
         now = time.strftime(r'%Y-%m-%d_%H-%M',time.localtime(time.time()))
 
     if rank == 0:
-        model_save_path = os.path.join('trained', now)
+        model_save_path = os.path.join('trained', now) + '_' + args.model
         os.makedirs(model_save_path, exist_ok=True) 
 
     ## Process group initialization for DDP
@@ -244,9 +244,10 @@ def main_worker(rank, args):
         avg_loss = val(args, model, dataloader_val, epoch, args.total_epoch, rank, npt)
         
         ## Save the best model parameters
-        if avg_loss < best_loss and rank == 0:
+        # if avg_loss < best_loss and rank == 0:
+        if rank == 0:
             best_loss = avg_loss
-            print("Best mIoU: {:.4f}".format(best_loss*100))
+            # print("Best Loss: {:.4f}".format(best_loss))
             file_name = '{:03d}_{:.4f}.ckpt'.format(epoch, best_loss)
             
             torch.save(
@@ -259,12 +260,12 @@ def main_worker(rank, args):
             )
 
             ## Remove previous saved model
-            model_list = list(os.listdir(model_save_path))
-            model_list.sort()
-            if len(model_list) > 2:
-                model_name = model_list[0]
-                cmd = 'rm {}'.format(os.path.join(model_save_path, model_name))
-                os.system(cmd)
+            # model_list = list(os.listdir(model_save_path))
+            # model_list.sort()
+            # if len(model_list) > 2:
+            #     model_name = model_list[0]
+            #     cmd = 'rm {}'.format(os.path.join(model_save_path, model_name))
+            #     os.system(cmd)
 
     if rank == 0:
         npt.stop()
