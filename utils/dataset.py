@@ -12,28 +12,39 @@ from typing import Tuple,List
 import os
 from tqdm import tqdm
 import random
+import albumentations as A
+from time import time
 
 import cv2
 
-def get_dataloader(data_set_name, batch_size, data_set_dir, past_frames = 10, future_frames = 10, ngpus = 1, num_workers = 1):
+def get_dataloader(data_set_name, batch_size, data_set_dir, past_frames = 10, future_frames = 10, ngpus = 1, num_workers = 3, eval_mode = False):
     if data_set_name == 'KTPW':
         dataset_dir = Path(data_set_dir)
-        renorm_transform = VidReNormalize(mean = 0., std = 1.0)
-        train_transform = VidToTensor() #transforms.Compose([VidRandomHorizontalFlip(0.5), VidRandomVerticalFlip(0.5), VidToTensor()])
-        test_transform = VidToTensor()
-        train_set = KTPWDataset(dataset_dir.joinpath('train'), train_transform,past_frames,future_frames)
+        renorm_transform = VidReNormalize(mean = 0., std = 1.0)        
+        train_transform = transforms.Compose([transforms.ToPILImage(),
+                                              transforms.ToTensor()])
+        test_transform = transforms.Compose([transforms.ToPILImage(),
+                                              transforms.ToTensor()])
+        print("eval_mode : ",eval_mode)
+        if eval_mode == False:
+            train_set = KTPWDataset(dataset_dir.joinpath('train'), train_transform,past_frames,future_frames)
         val_set = KTPWDataset(dataset_dir.joinpath('val'),test_transform, past_frames,future_frames)
 
     N = batch_size
-    train_loader = DataLoader(train_set, batch_size=N, shuffle=True, num_workers=num_workers, drop_last = True)
+    if eval_mode == False:
+        train_loader = DataLoader(train_set, batch_size=N, shuffle=True, num_workers=num_workers, drop_last = True)
+    else:
+        train_loader = None
     val_loader = DataLoader(val_set, batch_size=N, shuffle=True, num_workers=num_workers, drop_last = True)
 
     if ngpus > 1:
         # N = batch_size//ngpus
-        train_sampler = torch.utils.data.distributed.DistributedSampler(train_set)
+        if eval_mode == False:
+            train_sampler = torch.utils.data.distributed.DistributedSampler(train_set)
+            train_loader = DataLoader(train_set, batch_size=N, shuffle=False, pin_memory=True, num_workers=num_workers, sampler=train_sampler, drop_last = True)
+        else:
+            train_loader = None
         val_sampler = torch.utils.data.distributed.DistributedSampler(val_set)
-
-        train_loader = DataLoader(train_set, batch_size=N, shuffle=False, pin_memory=True, num_workers=num_workers, sampler=train_sampler, drop_last = True)
         val_loader = DataLoader(val_set, batch_size=N, shuffle=False, pin_memory=True, num_workers=num_workers, sampler=val_sampler, drop_last = True)
 
     return train_loader, val_loader, renorm_transform
@@ -52,7 +63,7 @@ class KTPWDataset(Dataset):
             future_clip --- Tensor with shape (batch_size, num_future_frames, C, H, W)
         """
         self.data_path = data_path
-        self.files = list(self.data_path.rglob('*.npy'))
+        self.files = list(self.data_path.rglob('*.npy'))#[:8]
         self.num_past_frames = num_past_frames
         self.num_future_frames = num_future_frames
         self.transform = transform
@@ -71,20 +82,19 @@ class KTPWDataset(Dataset):
             future_clip: Tensor with shape (num_future_frames, C, H, W)
         """
         vid_path = str(self.files[index])
-        full_clip = torch.from_numpy(np.load(vid_path)).int()
+        full_clip = torch.from_numpy(np.load(vid_path)).int().float()
         
         imgs = []
         for i in range(full_clip.shape[0]):
-            img = transforms.ToPILImage()(full_clip[i])
+            img = self.transform(full_clip[i])
             imgs.append(img)
         #imgs[0].save('full_clip.gif', save_all = True, append_images = imgs[1:]) # plotting full video
-        full_clip = self.transform(imgs)
-        
+        #full_clip = self.transform(imgs)
+        full_clip = torch.stack(imgs, dim = 0)
         past_clip = full_clip[0:self.num_past_frames, ...]
         future_clip = full_clip[self.num_past_frames:, ...]  
-        
+        end = time()
         return past_clip, future_clip
-
 
 class VidResize(object):
     def __init__(self, *args, **resize_kwargs):
@@ -270,7 +280,7 @@ def visualize_clip(clip, file_name):
             img = transforms.ToPILImage()(clip[i])
             imgs.append(img)
         imgs[0].save(str(Path(file_name)), save_all = True, append_images = imgs[1:])
-
+        
 if __name__ == '__main__':
     dataset = 'KTPW' #see utils.dataset
     root = './data/kTPW'
