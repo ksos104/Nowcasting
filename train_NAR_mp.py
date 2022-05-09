@@ -17,11 +17,13 @@ from datetime import datetime
 
 from model import VPTREnc, VPTRDec, VPTRDisc, init_weights, VPTRFormerNAR, VPTRFormerFAR
 from model import GDL, MSELoss, L1Loss, GANLoss, BiPatchNCE
-from utils import KTHDataset, BAIRDataset, MovingMNISTDataset
-from utils import get_dataloader
+from utils import KTPWDataset
+#from utils import get_dataloader
+from utils.dataset1 import get_dataloader
+
 from utils import visualize_batch_clips, save_ckpt, load_ckpt, set_seed, AverageMeters, init_loss_dict, write_summary, resume_training
 from utils import set_seed, gather_AverageMeters
-
+from tqdm import tqdm
 import logging
 import os
 
@@ -223,15 +225,19 @@ def main_worker(rank, args, world_size, img_channels, encC, encH, encW, dropout,
                                                                       TSLMA_flag, rank, batch_size, world_size, Transformer_lr, resume_AE_ckpt, 
                                                                       resume_Transformer_ckpt, num_encoder_layers, num_decoder_layers,
                                                                       num_past_frames, num_future_frames, init_Disc, train_Disc)
-    train_loader, val_loader, _, renorm_transform = get_dataloader(data_set_name, batch_size, data_set_dir, ngpus = world_size, num_workers = num_workers)
     
+    print(">>> Data loading...")
+    
+    train_loader, val_loader,  renorm_transform = get_dataloader(data_set_name, batch_size, data_set_dir, ngpus = world_size, num_workers = num_workers)
+    
+    print(">>> Start training....")
     for epoch in range(start_epoch+1, start_epoch + epochs+1):
         epoch_st = datetime.now()
 
         #Train
         print(f'train rank {rank} epoch {epoch}')
         train_EpochAveMeter = AverageMeters(loss_name_list)
-        for idx, sample in enumerate(train_loader, 0):
+        for idx, sample in enumerate(tqdm(train_loader), 0):
             iter_loss_dict = single_iter(VPTR_Enc, VPTR_Dec, VPTR_Disc, VPTR_Transformer, optimizer_T, optimizer_D, 
                                          sample, rank, mse_loss, gdl_loss, bpnce, lam_pc, gan_loss, lam_gan, max_grad_norm, train_flag = True)
             train_EpochAveMeter.iter_update(iter_loss_dict)
@@ -278,19 +284,19 @@ if __name__ == '__main__':
     set_seed(3407)
     args = parser.parse_args()
 
-    ckpt_save_dir = Path('/home/travail/xiyex/VPTR_ckpts/MNIST_TLMA_aug_BPNCE01_MSEGDL_NAR_mp_ckpt')
-    tensorboard_save_dir = Path('/home/travail/xiyex/VPTR_ckpts/MNIST_TLMA_aug_BPNCE01_MSEGDL_NAR_mp_tensorboard')
-    resume_AE_ckpt = Path('/home/travail/xiyex/VPTR_ckpts/MNIST_ResNetAE_MSEGDLgan001_ckpt').joinpath('epoch_93.tar')
+    ckpt_save_dir = Path('KTPW_exp2_mp')
+    tensorboard_save_dir = Path('./kor_RPE_tensorboard')
+    resume_AE_ckpt = Path('./KTPW_AE2').joinpath('epoch_1.tar')
     #resume_Transformer_ckpt = ckpt_save_dir.joinpath('epoch_90.tar')
     resume_Transformer_ckpt = None
 
-    data_set_name = 'MNIST'
+    data_set_name = 'KTPW'
     out_layer = 'Sigmoid'
-    data_set_dir = '/home/travail/xiyex/MovingMNIST'
+    data_set_dir ='/mnt/server14_hard0/dlsfbtp/dataset/korea/sliding_numpy_data'
     dev_set_size = 50
 
-    num_past_frames = 10
-    num_future_frames = 10
+    num_past_frames = 13
+    num_future_frames = 12
     encH, encW, encC = 8, 8, 528
     img_channels = 1
     epochs = 150
@@ -302,20 +308,20 @@ if __name__ == '__main__':
     max_grad_norm = 1.0 
     TSLMA_flag = False
     rpe = False
-
+                        
     lam_gan = None #0.001
     lam_pc = 0.1
     dropout = 0.1
 
     init_Disc = False
     train_Disc = False
-    num_workers = 1
+    num_workers = 3
     world_size = 4
 
     show_example_epochs = 1
     save_ckpt_epochs = 1
 
-    print("Start training....")
+    
     mp.spawn(main_worker,
              args=(args, world_size, img_channels, encC, encH, encW, dropout, out_layer, TSLMA_flag,
                 rpe, Transformer_lr, max_grad_norm, lam_pc, lam_gan, resume_AE_ckpt,
