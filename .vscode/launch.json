@@ -11,11 +11,11 @@
             "module": "train_unet",
             "args": [
                 "--model", "tunet",
-                "--data_path", "/mnt/server14_hard0/dlsfbtp/dataset/korea/sliding_numpy_data",
+                "--data_path", "/mnt/server11_hard3/jiny/Nowcasting/Nowcasting/data/kTPW",
                 "--n_gpus", "2",
                 "--batch_size", "2",
                 "--n_workers", "4",
-                "--total_epoch", "100"
+                "--total_epoch", "10"
             ]
         }
     ]

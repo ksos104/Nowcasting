@@ -12,7 +12,7 @@ from typing import Tuple,List
 import os
 from tqdm import tqdm
 import random
-import albumentations as A
+# import albumentations as A
 from time import time
 
 import cv2

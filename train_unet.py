@@ -96,6 +96,14 @@ def train(args, model, dataloader, optimizer, epoch, total_epoch, rank, npt):
     ## Neptune log
     if rank == 0:
         npt["train/avg_loss"].log(avg_loss)
+        npt["train/MAE"].log(train_score_accumulate['mae'])
+        npt["train/MSE"].log(train_score_accumulate['mse'])
+        for idx_frame in range(1,13):
+            npt["train/POD74_%d"%idx_frame].log(train_score_accumulate['POD74'][idx_frame-1])
+            npt["train/SUCR74_%d"%idx_frame].log(train_score_accumulate['SUCR74'][idx_frame-1])
+            npt["train/CSI74_%d"%idx_frame].log(train_score_accumulate['CSI74'][idx_frame-1])
+            npt["train/BIAS74_%d"%idx_frame].log(train_score_accumulate['BIAS74'][idx_frame-1])
+
 
         print(f"Training DONE. Epoch: {epoch}, Avg loss: {avg_loss:.4f}")
 
@@ -153,6 +161,13 @@ def val(args, model, dataloader, epoch, total_epoch, rank, npt):
     ## Neptune log
     if rank == 0:
         npt["val/avg_loss"].log(avg_loss)
+        npt["val/MAE"].log(val_score_accumulate['mae'])
+        npt["val/MSE"].log(val_score_accumulate['mse'])
+        for idx_frame in range(1,13):
+            npt["val/POD74_%d"%idx_frame].log(val_score_accumulate['POD74'][idx_frame-1])
+            npt["val/SUCR74_%d"%idx_frame].log(val_score_accumulate['SUCR74'][idx_frame-1])
+            npt["val/CSI74_%d"%idx_frame].log(val_score_accumulate['CSI74'][idx_frame-1])
+            npt["val/BIAS74_%d"%idx_frame].log(val_score_accumulate['BIAS74'][idx_frame-1])
 
         print(f"Validation done. Epoch: {epoch}, Avg loss: {avg_loss:.4f}")
 
@@ -190,7 +205,7 @@ def main_worker(rank, args):
     ## Process group initialization for DDP
     dist.init_process_group(
         backend='nccl',
-        init_method='tcp://127.0.0.1:2616',
+        init_method='tcp://127.0.0.1:16548',
         world_size=world_size,
         rank=rank
     )
