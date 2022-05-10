@@ -17,9 +17,10 @@ from torch.utils.data import DataLoader
 from torchvision import transforms
 
 from model import unet,EncDec,Tunet
-from utils import get_dataloader, MSE, MAE, weather_metrics
+from utils import get_dataloader, MSE, MAE, weather_metrics, Persistence
 
 import neptune.new as neptune
+import pdb
 
 criterion = nn.L1Loss()
 
@@ -76,35 +77,26 @@ def train(args, model, dataloader, optimizer, epoch, total_epoch, rank, npt):
         optimizer.step()
 
         ## Calculaet weather metric
-        train_score = weather_metrics(outputs,target_frames)
+        # train_score = weather_metrics(outputs,target_frames)
 
         ## Calculate perceptual metric
-        train_score['mse'] = MSE(outputs, target_frames).detach().cpu()
-        train_score['mae'] = MAE(outputs, target_frames).detach().cpu()
+        # train_score['mse'] = MSE(outputs, target_frames).detach().cpu()
+        # train_score['mae'] = MAE(outputs, target_frames).detach().cpu()
 
-        for key in train_score.keys():
-            train_score_accumulate[key] = train_score_accumulate[key] + train_score[key].detach().cpu() * batch_size if key in train_score_accumulate.keys() else train_score[key].detach().cpu() * batch_size
+        # for key in train_score.keys():
+            # train_score_accumulate[key] = train_score_accumulate[key] + train_score[key].detach().cpu() * batch_size if key in train_score_accumulate.keys() else train_score[key].detach().cpu() * batch_size
 
         ## tqdm update
         pbar.set_description(f"Training >> Epoch: [{epoch+1}/{total_epoch}] Iter: [{iter+1}/{total_iters}] Loss: {loss:.4f}({sum_loss / (iter+1):.4f})", refresh=False)
     dist.barrier()
 
     avg_loss = sum_loss / (iter+1)
-    for key in train_score.keys():
-         train_score_accumulate[key] /= len(dataloader.dataset)
+    # for key in train_score.keys():
+    #      train_score_accumulate[key] /= len(dataloader.dataset)
 
     ## Neptune log
     if rank == 0:
         npt["train/avg_loss"].log(avg_loss)
-        npt["train/MAE"].log(train_score_accumulate['mae'])
-        npt["train/MSE"].log(train_score_accumulate['mse'])
-        for idx_frame in range(1,13):
-            npt["train/POD74_%d"%idx_frame].log(train_score_accumulate['POD74'][idx_frame-1])
-            npt["train/SUCR74_%d"%idx_frame].log(train_score_accumulate['SUCR74'][idx_frame-1])
-            npt["train/CSI74_%d"%idx_frame].log(train_score_accumulate['CSI74'][idx_frame-1])
-            npt["train/BIAS74_%d"%idx_frame].log(train_score_accumulate['BIAS74'][idx_frame-1])
-
-
         print(f"Training DONE. Epoch: {epoch}, Avg loss: {avg_loss:.4f}")
 
     return
@@ -121,6 +113,9 @@ def val(args, model, dataloader, epoch, total_epoch, rank, npt):
 
     val_score = {}
     val_score_accumulate = {}
+    per_score = {}
+    per_score_accumulate = {}
+    # pdb.set_trace()
 
     with torch.no_grad():
         for iter, batch in pbar:
@@ -141,36 +136,56 @@ def val(args, model, dataloader, epoch, total_epoch, rank, npt):
             sum_loss += loss
 
             ## Calculaet weather metric
+           
             val_score = weather_metrics(outputs,target_frames)
 
-            ## Calculate perceptual metric
+   
             val_score['mse'] = MSE(outputs, target_frames).detach().cpu()
             val_score['mae'] = MAE(outputs, target_frames).detach().cpu()
 
             for key in val_score.keys():
                 val_score_accumulate[key] = val_score_accumulate[key] + val_score[key].detach().cpu() * batch_size if key in val_score_accumulate.keys() else val_score[key].detach().cpu() * batch_size
+            
+            ##### PER SCORE #####
+            outputs = Persistence(input_frames)
+            per_score = weather_metrics(outputs, target_frames)
+
+            per_score['mse'] = MSE(outputs, target_frames).detach().cpu()
+            per_score['mae'] = MAE(outputs, target_frames).detach().cpu()
+            
+            for key in per_score.keys():
+                per_score_accumulate[key] = per_score_accumulate[key] + per_score[key].detach().cpu() * batch_size if key in per_score_accumulate.keys() else per_score[key].detach().cpu() * batch_size
+
 
             ## tqdm update
             pbar.set_description(f"Valid >> Epoch: [{epoch+1}/{total_epoch}] Iter: [{iter+1}/{total_iters}] Loss: {loss:.4f}({sum_loss / (iter+1):.4f})", refresh=False)
         dist.barrier()
 
+    # pdb.set_trace()
+
     avg_loss = sum_loss / (iter+1)
     for key in val_score.keys():
         val_score_accumulate[key] /= len(dataloader.dataset)
+        per_score_accumulate[key] /= len(dataloader.dataset)
 
     ## Neptune log
+    # [5,10,20,30,40,50,60,70,80,90,100]
     if rank == 0:
         npt["val/avg_loss"].log(avg_loss)
-        npt["val/MAE"].log(val_score_accumulate['mae'])
-        npt["val/MSE"].log(val_score_accumulate['mse'])
+        npt["val/MAE"].log(val_score_accumulate['mae'].mean())
+        npt["val/MSE"].log(val_score_accumulate['mse'].mean())
+        npt["val/MAE_perscore"].log(per_score_accumulate['mae'].mean())
+        npt["val/MSE_perscore"].log(per_score_accumulate['mse'].mean())
         for idx_frame in range(1,13):
-            npt["val/POD74_%d"%idx_frame].log(val_score_accumulate['POD74'][idx_frame-1])
-            npt["val/SUCR74_%d"%idx_frame].log(val_score_accumulate['SUCR74'][idx_frame-1])
-            npt["val/CSI74_%d"%idx_frame].log(val_score_accumulate['CSI74'][idx_frame-1])
-            npt["val/BIAS74_%d"%idx_frame].log(val_score_accumulate['BIAS74'][idx_frame-1])
+            npt["val/POD40_%d"%idx_frame].log(val_score_accumulate['POD40'][idx_frame-1])
+            npt["val/SUCR40_%d"%idx_frame].log(val_score_accumulate['SUCR40'][idx_frame-1])
+            npt["val/CSI40_%d"%idx_frame].log(val_score_accumulate['CSI40'][idx_frame-1])
+            npt["val/BIAS40_%d"%idx_frame].log(val_score_accumulate['BIAS40'][idx_frame-1])
 
         print(f"Validation done. Epoch: {epoch}, Avg loss: {avg_loss:.4f}")
 
+
+    # pdb.set_trace()
     return avg_loss
 
 
@@ -205,7 +220,7 @@ def main_worker(rank, args):
     ## Process group initialization for DDP
     dist.init_process_group(
         backend='nccl',
-        init_method='tcp://127.0.0.1:7389',
+        init_method='tcp://127.0.0.1:2518',
         world_size=world_size,
         rank=rank
     )
@@ -260,11 +275,10 @@ def main_worker(rank, args):
         
         ## Save the best model parameters
         # if avg_loss < best_loss and rank == 0:
+
         if rank == 0:
             best_loss = avg_loss
-            # print("Best Loss: {:.4f}".format(best_loss))
             file_name = '{:03d}_{:.4f}.ckpt'.format(epoch, best_loss)
-            
             torch.save(
                 {
                     'epoch': epoch,
