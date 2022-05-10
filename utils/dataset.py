@@ -12,7 +12,7 @@ from typing import Tuple,List
 import os
 from tqdm import tqdm
 import random
-# import albumentations as A
+#import albumentations as A
 from time import time
 
 import cv2
@@ -82,7 +82,8 @@ class KTPWDataset(Dataset):
             future_clip: Tensor with shape (num_future_frames, C, H, W)
         """
         vid_path = str(self.files[index])
-        full_clip = torch.from_numpy(np.load(vid_path)).int().float()
+        # full_clip = torch.from_numpy(np.load(vid_path)).int().float()  #
+        full_clip = (torch.from_numpy(np.load(vid_path)).int().float())/255
         
         imgs = []
         for i in range(full_clip.shape[0]):
@@ -283,11 +284,13 @@ def visualize_clip(clip, file_name):
         
 if __name__ == '__main__':
     dataset = 'KTPW' #see utils.dataset
-    root = './data/kTPW'
+    root = '../data/kTPW'
     num_past_frames, num_future_frames = 13,12
     train_loader, val_loader, renorm_transform = get_dataloader(dataset, 1, root, num_past_frames, num_future_frames)
-    past_clip, future_clip = next(iter(train_loader))
-    visualize_clip(past_clip[0], './past_clip.gif')
-    visualize_clip(future_clip[0], 'future_clip.gif')
+    #past_clip, future_clip = next(iter(train_loader))
+    #visualize_clip(past_clip[0], './past_clip.gif')
+    #visualize_clip(future_clip[0], 'future_clip.gif')
+    mean, std = mean_std_compute(train_loader, torch.device('cuda:0'))
+    mean, std = mean_std_compute(val_loader, torch.device('cuda:0'))
     print(past_clip.shape, future_clip.shape) #(B, T, C, H, W)
     

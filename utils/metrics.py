@@ -10,6 +10,7 @@ from .train_summary import load_ckpt
 
 import numpy as np
 from math import exp
+import einops
 
 
 def PSNR(x: Tensor, y: Tensor, data_range: Union[float, int] = 1.0) -> Tensor:
@@ -39,12 +40,21 @@ def MSE(y_pred : Tensor, y_true: Tensor, per_frame = False) -> Tensor:
     Return :
         MAE score between (y_pred,y_true) per frames. 
     """
+    y_pred = y_pred * 255
+    y_true = y_true * 255
     
     mse = (y_pred - y_true).square().mean(axis = [0,2,3])
     if per_frame :
         mse = mse.mean()
 
     return mse
+
+def Persistence(input_frames : Tensor) -> Tensor:
+    N,T,H,W = input_frames.shape
+    y_pred = input_frames[:,-1,:,:]
+    y_pred = einops.repeat(y_pred, 'b m n ->b k m n', k = T-1)
+    
+    return y_pred
 
 def MAE(y_pred : Tensor, y_true: Tensor, per_frame = False) -> Tensor:
     """
@@ -54,6 +64,10 @@ def MAE(y_pred : Tensor, y_true: Tensor, per_frame = False) -> Tensor:
     Return :
         MAE score between (y_pred,y_true)
     """
+    y_pred = y_pred * 255
+    y_true = y_true * 255
+
+
     mae = (y_pred - y_true).abs().mean(axis = [0,2,3])
     if per_frame :
         mae= mae.mean()
@@ -70,16 +84,16 @@ def compute_stats(y_pred : Tensor, y_true: Tensor, threshold : int):
     hits = (binarized_y_pred * binarized_y_true).sum(axis = [0,2,3]) # (prediciton = 1, truth = 1)
     misses = ((1 - binarized_y_pred) * binarized_y_true).sum(axis = [0,2,3]) # (prediciton = 0, truth = 1)
     false_alarms = (binarized_y_pred * (1-binarized_y_true)).sum(axis = [0,2,3]) # (prediciton = 1, truth = 0)
-
-    POD = hits/(hits + misses)
-    SUCR = hits/(hits+false_alarms)
-    CSI = hits/(hits+misses+false_alarms)
-    BIAS = (hits+false_alarms)/(hits + misses)
+    eps = 1e-8
+    POD = hits/(hits + misses + eps)
+    SUCR = hits/(hits+false_alarms + eps)
+    CSI = hits/(hits+misses+false_alarms + eps)
+    BIAS = (hits+false_alarms)/(hits + misses + eps)
 
     return POD, SUCR, CSI, BIAS
 
 
-def weather_metrics(y_pred: Tensor, y_true : Tensor, thresholds = [16,74,133,160,181,219]):
+def weather_metrics(y_pred: Tensor, y_true : Tensor, thresholds = [5,10,20,30,40,50,60,70,80,90,100]):
     # convert to 255 scale
     y_pred = y_pred * 255
     y_true = y_true * 255
