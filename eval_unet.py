@@ -17,7 +17,7 @@ from torch.utils.data import DataLoader
 from torchvision import transforms
 
 from model import unet,EncDec,Tunet
-from utils import get_dataloader, MSE, MAE, weather_metrics
+from utils import get_dataloader, MSE, MAE, weather_metrics, Persistence
 
 import neptune.new as neptune
 import matplotlib.pyplot as plt
@@ -57,6 +57,8 @@ def val(args, model, dataloader, rank, npt):
 
     val_score = {}
     val_score_accumulate = {}
+    per_score = {}
+    per_score_accumulate = {}
 
     with torch.no_grad():
         for iter, batch in pbar:
@@ -64,7 +66,6 @@ def val(args, model, dataloader, rank, npt):
             input_frames = batch[0].cuda() if torch.cuda.is_available() else batch
             target_frames = batch[1].cuda() if torch.cuda.is_available() else batch
             input_frames = input_frames.squeeze(dim=2)
-            print(input_frames)
             target_frames = target_frames.squeeze(dim=2)
             input_frames = input_frames.type(torch.float)
             target_frames = target_frames.type(torch.float)
@@ -87,17 +88,36 @@ def val(args, model, dataloader, rank, npt):
             for key in val_score.keys():
                 val_score_accumulate[key] = val_score_accumulate[key] + val_score[key].detach().cpu() * batch_size if key in val_score_accumulate.keys() else val_score[key].detach().cpu() * batch_size
 
+
+              ##### PER SCORE #####
+
+            outputs = Persistence(input_frames)
+            per_score = weather_metrics(outputs, target_frames)
+
+            ## Calculate perceptual metric
+            per_score['mse'] = MSE(outputs, target_frames).detach().cpu()
+            per_score['mae'] = MAE(outputs, target_frames).detach().cpu()
+
+            for key in per_score.keys():
+                per_score_accumulate[key] = per_score_accumulate[key] + per_score[key].detach().cpu() * batch_size if key in per_score_accumulate.keys() else per_score[key].detach().cpu() * batch_size
+
+
         dist.barrier()
 
     avg_loss = sum_loss #/ (iter+1)
     for key in val_score.keys():
         val_score_accumulate[key] /= len(dataloader.dataset)
-        
+        per_score_accumulate[key] /= len(dataloader.dataset)
+
+
     model_save_path = 'figs'
     os.makedirs(model_save_path, exist_ok=True) 
     os.makedirs(model_save_path+'/scores_csv', exist_ok=True) 
     df = pd.DataFrame(val_score_accumulate)
     df.to_csv(f'./{model_save_path}/scores_csv/{args.model}_val_score_accumulate.csv',index=False)
+
+    df = pd.DataFrame(per_score_accumulate)
+    df.to_csv(f'./{model_save_path}/scores_csv/{args.model}_per_score_accumulate.csv',index=False)
     
     return avg_loss
 
@@ -122,7 +142,7 @@ def main_worker(rank, args):
     ## Process group initialization for DDP
     dist.init_process_group(
         backend='nccl',
-        init_method='tcp://127.0.0.1:2616',
+        init_method='tcp://127.0.0.1:26216',
         world_size=world_size,
         rank=rank
     )
