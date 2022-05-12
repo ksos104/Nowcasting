@@ -12,12 +12,11 @@ from typing import Tuple,List
 import os
 from tqdm import tqdm
 import random
-#import albumentations as A
 from time import time
 
 import cv2
 
-def get_dataloader(data_set_name, batch_size, data_set_dir, past_frames = 10, future_frames = 10, ngpus = 1, num_workers = 3, eval_mode = False):
+def get_dataloader(data_set_name, batch_size, data_set_dir, past_frames = 10, future_frames = 10, ngpus = 1, num_workers = 4, eval_mode = False, split='full'):
     if data_set_name == 'KTPW':
         dataset_dir = Path(data_set_dir)
         renorm_transform = VidReNormalize(mean = 0., std = 1.0)        
@@ -27,8 +26,8 @@ def get_dataloader(data_set_name, batch_size, data_set_dir, past_frames = 10, fu
                                               transforms.ToTensor()])
         print("eval_mode : ",eval_mode)
         if eval_mode == False:
-            train_set = KTPWDataset(dataset_dir.joinpath('train'), train_transform,past_frames,future_frames)
-        val_set = KTPWDataset(dataset_dir.joinpath('val'),test_transform, past_frames,future_frames)
+            train_set = KTPWDataset(dataset_dir, train_transform,past_frames,future_frames)
+        val_set = KTPWDataset(dataset_dir,test_transform, past_frames,future_frames,split)
 
     N = batch_size
     if eval_mode == False:
@@ -51,7 +50,7 @@ def get_dataloader(data_set_name, batch_size, data_set_dir, past_frames = 10, fu
 
 class KTPWDataset(Dataset):
     def __init__(self, data_path, transform,
-                 num_past_frames=13, num_future_frames=12):
+                 num_past_frames=13, num_future_frames=12,split='full'):
         """
         Args:
             data_path --- data folder path
@@ -63,14 +62,17 @@ class KTPWDataset(Dataset):
             future_clip --- Tensor with shape (batch_size, num_future_frames, C, H, W)
         """
         self.data_path = data_path
-        self.files = list(self.data_path.rglob('*.npy'))#[:8]
+        self.split=split
+        self.files = []
+        self.imgId=[i_id.strip() for i_id in open(data_path.joinpath(f'{split}.txt'))]
+        self.files = [data_path.joinpath('val').joinpath(f'{name}.npy') for name in self.imgId]         
         self.num_past_frames = num_past_frames
         self.num_future_frames = num_future_frames
         self.transform = transform
         
         if not self.files:
             raise Exception(f"No video found in {self.data_path}")
-        print(f"Found {len(self.files)} {str(self.data_path).split('/')[-1]} KTPW videos.")
+        print(f"Found {len(self.imgId)} KTPW videos.")
 
     def __len__(self) -> int:
         return len(self.files)
@@ -284,13 +286,15 @@ def visualize_clip(clip, file_name):
         
 if __name__ == '__main__':
     dataset = 'KTPW' #see utils.dataset
-    root = '../data/kTPW'
+    root = 'data/kTPW_sample'
     num_past_frames, num_future_frames = 13,12
+    split='easy'
+    train_loader, val_loader, renorm_transform = get_dataloader(dataset, 1, root, num_past_frames, num_future_frames,eval_mode=True,split=split)
     train_loader, val_loader, renorm_transform = get_dataloader(dataset, 1, root, num_past_frames, num_future_frames)
-    #past_clip, future_clip = next(iter(train_loader))
-    #visualize_clip(past_clip[0], './past_clip.gif')
-    #visualize_clip(future_clip[0], 'future_clip.gif')
-    mean, std = mean_std_compute(train_loader, torch.device('cuda:0'))
-    mean, std = mean_std_compute(val_loader, torch.device('cuda:0'))
-    print(past_clip.shape, future_clip.shape) #(B, T, C, H, W)
+    past_clip, future_clip = next(iter(val_loader))
+    visualize_clip(past_clip[0], './past_clip.gif')
+    visualize_clip(future_clip[0], 'future_clip.gif')
+    #mean, std = mean_std_compute(train_loader, torch.device('cuda:0'))
+    #mean, std = mean_std_compute(val_loader, torch.device('cuda:0'))
+    #print(past_clip.shape, future_clip.shape) #(B, T, C, H, W)
     

@@ -26,7 +26,6 @@ criterion = nn.L1Loss()
 
 def get_args():
     parser = argparse.ArgumentParser(description="FSS_msson")
-
     parser.add_argument('--n_gpus', type=int, help='Number of gpus you need', default=1)
     parser.add_argument('--data_path', type=str, help='Path for dataset you want to use. Absolute path is recomended')
     parser.add_argument('--batch_size', type=int, help='Total batch size', default=1)
@@ -38,6 +37,7 @@ def get_args():
     parser.add_argument('--input_frames', type=int, help='Number of input past frames', default=13)
     parser.add_argument('--output_frames', type=int, help='Number of output future frames', default=12)
     parser.add_argument('--model', type=str, help='Select model [encdec, unet, tunet]', choices=['encdec', 'unet', 'tunet'], default='unet')
+    parser.add_argument('--split', type=str, help='Select model [easy, hard, medium]', choices=['easy', 'hard', 'medium','full'], default='easy')
 
     args = parser.parse_args()
 
@@ -101,7 +101,6 @@ def val(args, model, dataloader, rank, npt):
             for key in per_score.keys():
                 per_score_accumulate[key] = per_score_accumulate[key] + per_score[key].detach().cpu() * batch_size if key in per_score_accumulate.keys() else per_score[key].detach().cpu() * batch_size
 
-
         dist.barrier()
 
     avg_loss = sum_loss #/ (iter+1)
@@ -114,10 +113,10 @@ def val(args, model, dataloader, rank, npt):
     os.makedirs(model_save_path, exist_ok=True) 
     os.makedirs(model_save_path+'/scores_csv', exist_ok=True) 
     df = pd.DataFrame(val_score_accumulate)
-    df.to_csv(f'./{model_save_path}/scores_csv/{args.model}_val_score_accumulate.csv',index=False)
+    df.to_csv(f'./{model_save_path}/scores_csv/{args.model}_{args.split}_val_score_accumulate.csv',index=False)
 
     df = pd.DataFrame(per_score_accumulate)
-    df.to_csv(f'./{model_save_path}/scores_csv/{args.model}_per_score_accumulate.csv',index=False)
+    df.to_csv(f'./{model_save_path}/scores_csv/{args.model}_{args.split}_per_score_accumulate.csv',index=False)
     
     return avg_loss
 
@@ -150,7 +149,7 @@ def main_worker(rank, args):
 
     ## Dataloader initialization
     print(">>> Load datasets")
-    dataloader_train, dataloader_val, renorm_transform = get_dataloader(data_set_name='KTPW', batch_size=batch_size, data_set_dir=args.data_path, past_frames=args.input_frames, future_frames=args.output_frames, ngpus=ngpus, num_workers=n_workers,eval_mode=True)
+    dataloader_train, dataloader_val, renorm_transform = get_dataloader(data_set_name='KTPW', batch_size=batch_size, data_set_dir=args.data_path, past_frames=args.input_frames, future_frames=args.output_frames, ngpus=ngpus, num_workers=n_workers,eval_mode=True,split=args.split)
     
     ## Network model initialization
     if args.model == 'encdec':
@@ -171,9 +170,8 @@ def main_worker(rank, args):
 
     ## Model load
     if args.load: 
-        last_checkpoint_path = glob(os.path.join('trained', now, '*'))[-1]
+        last_checkpoint_path = os.path.join( now)
         checkpoint = torch.load(last_checkpoint_path)
-
         #epoch = checkpoint['epoch'] + 1
         model.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['opt_state_dict'])
