@@ -26,7 +26,7 @@ def get_dataloader(data_set_name, batch_size, data_set_dir, past_frames = 10, fu
                                               transforms.ToTensor()])
         print("eval_mode : ",eval_mode)
         if eval_mode == False:
-            train_set = KTPWDataset(dataset_dir, train_transform,past_frames,future_frames)
+            train_set = KTPWDataset(dataset_dir, train_transform,past_frames,future_frames,split='train')
         val_set = KTPWDataset(dataset_dir,test_transform, past_frames,future_frames,split)
 
     N = batch_size
@@ -65,7 +65,8 @@ class KTPWDataset(Dataset):
         self.split=split
         self.files = []
         self.imgId=[i_id.strip() for i_id in open(data_path.joinpath(f'{split}.txt'))]
-        self.files = [data_path.joinpath('val').joinpath(f'{name}.npy') for name in self.imgId]         
+        self.jpath='train' if self.split == 'train' else 'val'
+        self.files = [data_path.joinpath(self.jpath).joinpath(f'{name}.npy') for name in self.imgId]         
         self.num_past_frames = num_past_frames
         self.num_future_frames = num_future_frames
         self.transform = transform
