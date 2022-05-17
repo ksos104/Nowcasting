@@ -17,9 +17,9 @@ from datetime import datetime
 
 from model import VPTREnc, VPTRDec, VPTRDisc, init_weights, VPTRFormerNAR, VPTRFormerFAR
 from model import GDL, MSELoss, L1Loss, GANLoss, BiPatchNCE
-from utils import KTPWDataset
-#from utils import get_dataloader
-from utils.dataset1 import get_dataloader
+#from utils import KTPWDataset
+from utils import get_dataloader
+#from utils.dataset import get_dataloader
 
 from utils import visualize_batch_clips, save_ckpt, load_ckpt, set_seed, AverageMeters, init_loss_dict, write_summary, resume_training
 from utils import set_seed, gather_AverageMeters
@@ -84,7 +84,7 @@ def cal_lossT(VPTR_Disc, fake_imgs, real_imgs, fake_feats, real_feats,  mse_loss
 def init_models(img_channels, encC, encH, encW, dropout, out_layer, rpe, TSLMA_flag, rank, batch_size, world_size,
                 Transformer_lr, resume_AE_ckpt, 
                 resume_Transformer_ckpt = None, num_encoder_layers = 4, num_decoder_layers = 8,
-                num_past_frames = 10, num_future_frames = 10, init_Disc = False, train_Disc = False):
+                num_past_frames = 13, num_future_frames = 12, init_Disc = False, train_Disc = False):
     
     VPTR_Enc = VPTREnc(img_channels, feat_dim = encC, n_downsampling = 3).to(rank)
     VPTR_Dec = VPTRDec(img_channels, feat_dim = encC, n_downsampling = 3, out_layer = out_layer).to(rank)
@@ -135,16 +135,15 @@ def single_iter(VPTR_Enc, VPTR_Dec, VPTR_Disc, VPTR_Transformer, optimizer_T, op
     past_frames, future_frames = sample
     past_frames = past_frames.to(rank)
     future_frames = future_frames.to(rank)
-    
+    print(past_frames.shape)
     with torch.no_grad():
-        past_gt_feats = VPTR_Enc(past_frames)
-        future_gt_feats = VPTR_Enc(future_frames)
+        past_gt_feats = VPTR_Enc(past_frames) #1, 13, 528, 48, 48]
+        future_gt_feats = VPTR_Enc(future_frames) #[1, 12, 528, 48, 48]
         
     if train_flag:
         VPTR_Transformer = VPTR_Transformer.train()
         VPTR_Transformer.zero_grad(set_to_none=True)
         VPTR_Dec.zero_grad(set_to_none=True)
-        
         pred_future_feats = VPTR_Transformer(past_gt_feats)
         pred_frames = VPTR_Dec(pred_future_feats)
         
@@ -202,8 +201,8 @@ def cleanup():
 def main_worker(rank, args, world_size, img_channels, encC, encH, encW, dropout, out_layer, TSLMA_flag,
                 rpe, Transformer_lr, max_grad_norm, lam_pc, lam_gan, resume_AE_ckpt,
                 data_set_name, batch_size, data_set_dir, dev_set_size, epochs, ckpt_save_dir, tensorboard_save_dir,
-                resume_Transformer_ckpt = None, num_encoder_layers = 4, num_decoder_layers = 8, num_past_frames = 10, 
-                num_future_frames = 10, init_Disc = False, train_Disc = False,
+                resume_Transformer_ckpt = None, num_encoder_layers = 4, num_decoder_layers = 8, num_past_frames = 13, 
+                num_future_frames = 12, init_Disc = False, train_Disc = False,
                 num_workers = 8, show_example_epochs = 10, save_ckpt_epochs = 2):
     setup(rank, world_size, args)
     torch.cuda.set_device(rank)
@@ -284,15 +283,15 @@ if __name__ == '__main__':
     set_seed(3407)
     args = parser.parse_args()
 
-    ckpt_save_dir = Path('KTPW_exp2_mp')
+    ckpt_save_dir = Path('sample')
     tensorboard_save_dir = Path('./kor_RPE_tensorboard')
-    resume_AE_ckpt = Path('./KTPW_AE2').joinpath('epoch_1.tar')
+    resume_AE_ckpt = Path('./sample').joinpath('epoch_3.tar')
     #resume_Transformer_ckpt = ckpt_save_dir.joinpath('epoch_90.tar')
     resume_Transformer_ckpt = None
 
     data_set_name = 'KTPW'
     out_layer = 'Sigmoid'
-    data_set_dir ='/mnt/server14_hard0/dlsfbtp/dataset/korea/sliding_numpy_data'
+    data_set_dir ='/mnt/server11_hard3/jiny/Nowcasting/Nowcasting/data/kTPW_sample/'
     dev_set_size = 50
 
     num_past_frames = 13
@@ -300,7 +299,7 @@ if __name__ == '__main__':
     encH, encW, encC = 8, 8, 528
     img_channels = 1
     epochs = 150
-    batch_size = 2
+    batch_size = 1
     num_encoder_layers = 4
     num_decoder_layers = 8
 
@@ -316,7 +315,7 @@ if __name__ == '__main__':
     init_Disc = False
     train_Disc = False
     num_workers = 3
-    world_size = 4
+    world_size = 2
 
     show_example_epochs = 1
     save_ckpt_epochs = 1

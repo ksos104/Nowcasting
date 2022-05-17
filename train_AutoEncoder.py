@@ -104,7 +104,7 @@ def show_samples(VPTR_Enc, VPTR_Dec, sample, save_dir, renorm_transform):
         visualize_batch_clips(past_frames[0:idx, :, ...], rec_future_frames[0:idx, :, ...], rec_past_frames[0:idx, :, ...], save_dir, renorm_transform, desc = 'ae')
 
 if __name__ == '__main__':
-    ckpt_save_dir = Path('KTPW_AE2')
+    ckpt_save_dir = Path('sample')
     tensorboard_save_dir = Path('kor_tensorboard')
 
     #resume_ckpt = ckpt_save_dir.joinpath('epoch_45.tar')
@@ -116,15 +116,15 @@ if __name__ == '__main__':
     num_future_frames = 12
     encH, encW, encC = 8, 8, 528
     img_channels = 1 #3 channels for BAIR datset
-    epochs = 5
+    epochs = 20
     N = 1
-    AE_lr = 2e-4
+    AE_lr = 2e-5#2e-4
     lam_gan = 0.01
     device = torch.device('cuda')
 
     #####################Init Dataset ###########################
     data_set_name = 'KTPW'
-    dataset_dir ='/mnt/server14_hard0/dlsfbtp/dataset/korea/sliding_numpy_data'
+    dataset_dir ='/mnt/server11_hard3/jiny/Nowcasting/Nowcasting/data/kTPW_sample/'
     train_loader, val_loader,  renorm_transform = get_dataloader(data_set_name, N, dataset_dir, num_past_frames, num_future_frames)
 
     #####################Init Models and Optimizer ###########################
@@ -167,13 +167,14 @@ if __name__ == '__main__':
         show_samples(VPTR_Enc, VPTR_Dec, sample, ckpt_save_dir.joinpath(f'train_gifs_epoch{epoch}'), renorm_transform)
         
         #validation
+        print('>> validation')
         EpochAveMeter = AverageMeters(loss_name_list)
-        for idx, sample in enumerate(val_loader, 0):
+        for idx, sample in enumerate(tqdm(val_loader), 0):
             iter_loss_dict = single_iter(VPTR_Enc, VPTR_Dec, VPTR_Disc, optimizer_G, optimizer_D, sample, device, train_flag = False)
             EpochAveMeter.iter_update(iter_loss_dict)
         loss_dict = EpochAveMeter.epoch_update(loss_dict, epoch, train_flag = False)
         write_summary(summary_writer, loss_dict, train_flag = False)
-        
+        print('>> save_ckpt')
         save_ckpt({'VPTR_Enc': VPTR_Enc, 'VPTR_Dec': VPTR_Dec, 'VPTR_Disc': VPTR_Disc}, 
                 {'optimizer_G': optimizer_G, 'optimizer_D': optimizer_D}, 
                 epoch, loss_dict, ckpt_save_dir)

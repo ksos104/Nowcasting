@@ -25,7 +25,6 @@ class VPTREnc(nn.Module):
         #feat = self.out_proj(feat)
         _, C, H, W = feat.shape
         feat = feat.reshape(N, T, C, H, W)
-
         return feat
 
 class VPTRDec(nn.Module):
@@ -43,7 +42,6 @@ class VPTRDec(nn.Module):
 
         out = self.decoder(feat.flatten(0, 1))
         _, C, H, W = out.shape
-
         return out.reshape(N, T, C, H, W)
 
 class VPTRDisc(nn.Module):
@@ -109,7 +107,6 @@ class VPTRFormerNAR(nn.Module):
         self.dropout = dropout
         self.window_size = window_size
         self.Spatial_FFN_hidden_ratio = Spatial_FFN_hidden_ratio 
-
         self.transformer = VidHRFormerNAR((d_model, encH, encW), num_encoder_layers, num_decoder_layers, num_past_frames, num_future_frames,
                     d_model, nhead, window_size = window_size, dropout = dropout, drop_path = dropout, 
                     Spatial_FFN_hidden_ratio = Spatial_FFN_hidden_ratio, dim_feedforward = self.d_model*Spatial_FFN_hidden_ratio, TSLMA_flag = TSLMA_flag, rpe = rpe)
@@ -117,7 +114,7 @@ class VPTRFormerNAR(nn.Module):
         #Init all the pos_embed
         T = num_past_frames+num_future_frames
         pos1d = PositionEmbeddding1D()
-        temporal_pos = pos1d(L = T, N = 1, E = self.d_model)[:, 0, :]
+        temporal_pos = pos1d(L = T, N = 1, E = self.d_model)[:, 0, :] #[25, 528]
         self.register_buffer('temporal_pos', temporal_pos)
         
         pos2d = PositionEmbeddding2D()
@@ -140,9 +137,10 @@ class VPTRFormerNAR(nn.Module):
     def forward(self, past_gt_feat):
         """
         Args:
-            past_gt_feats:  (N, T, C, H, W)
+            past_gt_feats:  (N, T, C, H, W) #[1, 10, 528, 48, 48]
         """
         pred, memory = self.transformer(past_gt_feat, self.lw_pos, self.temporal_pos, self.Tlw_pos, self.frame_queries, init_tgt = None)
+        # src, local_window_pos_embed, temporal_pos_embed, TS_local_pos_embed, query_pos, init_tgt = None
 
         return pred
     

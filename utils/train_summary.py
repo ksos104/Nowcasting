@@ -132,7 +132,8 @@ def save_ckpt(Modules_dict, Optimizers_dict, epoch, loss_dict, save_dir):
     if not Path(save_dir).exists():
         Path(save_dir).mkdir(parents=True, exist_ok=True) 
     ckpt_file = Path(save_dir).joinpath(f"epoch_{epoch}.tar")
-    ckpt_codes = read_code_files()
+    #ckpt_codes = read_code_files()
+    ckpt_codes = {}
 
     module_state_dict = {}
     for k, m in Modules_dict.items():
@@ -145,7 +146,7 @@ def save_ckpt(Modules_dict, Optimizers_dict, epoch, loss_dict, save_dir):
         'loss_dict': loss_dict, #{loss_name: [train_loss_list, val_loss_list]}
         'Module_state_dict': module_state_dict,
         'optimizer_state_dict': optim_state_dict,
-        'code': ckpt_codes
+        #'code': ckpt_codes
     }, ckpt_file.absolute().as_posix())
 
 def load_ckpt(ckpt_file, map_location = None):
@@ -155,7 +156,8 @@ def load_ckpt(ckpt_file, map_location = None):
     loss_dict = ckpt["loss_dict"]
     Modules_state_dict = ckpt['Module_state_dict']
     Optimizers_state_dict = ckpt['optimizer_state_dict']
-    code = ckpt['code']
+    #code = ckpt['code']
+    code = []
 
     return Modules_state_dict, Optimizers_state_dict, epoch, loss_dict, code
 

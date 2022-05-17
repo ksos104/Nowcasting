@@ -16,7 +16,7 @@ from time import time
 
 import cv2
 
-def get_dataloader(data_set_name, batch_size, data_set_dir, past_frames = 10, future_frames = 10, ngpus = 1, num_workers = 4, eval_mode = False, split='full'):
+def get_dataloader(data_set_name, batch_size, data_set_dir, past_frames = 13, future_frames = 12, ngpus = 1, num_workers = 4, eval_mode = False, split='full'):
     if data_set_name == 'KTPW':
         dataset_dir = Path(data_set_dir)
         renorm_transform = VidReNormalize(mean = 0., std = 1.0)        
@@ -66,7 +66,7 @@ class KTPWDataset(Dataset):
         self.files = []
         self.imgId=[i_id.strip() for i_id in open(data_path.joinpath(f'{split}.txt'))]
         self.jpath='train' if self.split == 'train' else 'val'
-        self.files = [data_path.joinpath(self.jpath).joinpath(f'{name}.npy') for name in self.imgId]         
+        self.files = [data_path.joinpath(self.jpath).joinpath(f'{name}.npy') for name in self.imgId]        
         self.num_past_frames = num_past_frames
         self.num_future_frames = num_future_frames
         self.transform = transform

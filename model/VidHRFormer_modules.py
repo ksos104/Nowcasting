@@ -66,10 +66,9 @@ class VidHRFormerBlockEnc(nn.Module):
         """
         N, T, H, W, C = x.shape
         x = x + self.drop_path(self.SLMHSA(self.norm1(x), local_window_pos_embed)) #spatial local window self-attention, and skip connection
-        
         #Conv feed-forward, different local window information interacts
         x = x + self.drop_path(self.SpatialFFN(self.norm2(x)))#(N, T, H, W, C)
-
+        
         #temporal attention
         x = x.permute(1, 0, 2, 3, 4).reshape(T, N*H*W, C)
         x1 = self.norm3(x)
@@ -82,14 +81,13 @@ class VidHRFormerBlockEnc(nn.Module):
                                attn_mask = attn_mask.to(x1.device))[0])
         else:
             x = x + self.drop1(self.temporal_MHSA(x1 + temporal_pos_embed[:, None, :], x1 + temporal_pos_embed[:, None, :], x1)[0])
-
+        
         #output feed-forward
         x1 = self.norm4(x)
         x1 = self.linear2(self.drop2(self.activation(self.linear1(x1))))
         x = x + self.drop3(x1)
 
         x = x.reshape(T, N, H, W, C).permute(1, 0, 2, 3, 4)
-
         return x
 
 ####################################End of Transformer Encoder modules#################################
@@ -163,7 +161,7 @@ class VidHRFormerBlockDecNAR(nn.Module):
 
     def forward(self, tgt, query_pos, memory, local_window_pos_embed, future_query_temporal_pos_embed, TS_local_pos_embed, past_query_temporal_pos_embed):
         """
-        tgt: (N, T2, H, W, C)
+        tgt: (N, T2, H, W, C) #1, 12, 8, 8, 528
         query_pos: (N, T2, H, W, C)
         memory: (N, T1, H, W, C)
         local_window_pos_embed: (window_size, window_size, C)
@@ -172,7 +170,7 @@ class VidHRFormerBlockDecNAR(nn.Module):
 
         Return: (N, T2, H, W, C)
         """
-        N, T2, H, W, C = tgt.shape
+        N, T2, H, W, C = tgt.shape #1, 12, 8, 8, 528
         tgt2 = self.norm1(tgt)
         tgt2_query_pos = tgt2 + query_pos
         tgt2 = tgt + self.drop_path(self.SLMHSA(tgt2_query_pos, local_window_pos_embed, value = tgt2)) #spatial local window self-attention, and skip connection
@@ -180,9 +178,9 @@ class VidHRFormerBlockDecNAR(nn.Module):
         tgt2 = tgt2 + self.drop_path(self.SpatialFFN(self.norm2(tgt2))) #(N, T, H, W, C)
 
         #query temporal self-attention
-        tgt2 = tgt2.permute(1, 0, 2, 3, 4).reshape(T2, N*H*W, C)
-        tgt = self.norm3(tgt2)
-        tgt2 = tgt2 + self.drop1(self.temporal_MHSA(tgt + future_query_temporal_pos_embed[:, None, :], 
+        tgt2 = tgt2.permute(1, 0, 2, 3, 4).reshape(T2, N*H*W, C) #[12, 64, 528]
+        tgt = self.norm3(tgt2) #[12, 1, 64, 528]
+        tgt2 = tgt2 + self.drop1(self.temporal_MHSA(tgt + future_query_temporal_pos_embed[:, None, :], #15, 528
                                               tgt + future_query_temporal_pos_embed[:, None, :], 
                                               tgt)[0])
         
@@ -198,7 +196,7 @@ class VidHRFormerBlockDecNAR(nn.Module):
             tgt2 = tgt2 + self.drop_path1(self.TSLMA(memory, tgt + query_pos, TS_local_pos_embed))
         else:
             tgt = self.norm5(tgt2)
-            T1 = memory.shape[1]
+            T1 = memory.shape[1] #13
             memory = memory.permute(1, 0, 2, 3, 4).reshape(T1, N*H*W, C)
             query_pos = query_pos.permute(1, 0, 2, 3, 4).reshape(T2, N*H*W, C)
             tgt2 = tgt2 + self.drop_path1(self.EncDecAttn(query = tgt+query_pos+future_query_temporal_pos_embed[:, None, :], 

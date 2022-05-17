@@ -38,16 +38,18 @@ class VidHRFormerNAR(nn.Module):
             out_proj: (N, Tf, in_C, H, W), final output feature for the decoder
             memory: (N, Tp, H, W, embed_dim)
         """
-        N, Tp, _, _, _ = src.shape
+        N, Tp, _, _, _ = src.shape #1, 10, 528, 48, 48]
         #src = self.conv_proj(src.view(N*Tp, self.in_C, self.H, self.W)).view(N, Tp, self.embed_dim, self.H, self.W)
         src = src.permute(0, 1, 3, 4, 2)
-        memory = self.encoder(src, local_window_pos_embed, temporal_pos_embed[0:Tp, ...])
+        memory = self.encoder(src, local_window_pos_embed, temporal_pos_embed[0:Tp, ...]) #[1, 13, 48, 48, 528]
         #pred_query = self.FBP(memory, src) #(N, Tf, H, W, embed_dim)
-        query_pos = query_pos.unsqueeze(0).repeat(N, 1, 1, 1, 1)# + pred_query
-
+        query_pos = query_pos.unsqueeze(0).repeat(N, 1, 1, 1, 1)# + pred_query #1,12,8,8,528
+        print(query_pos.shape)
         init_tgt = torch.zeros_like(query_pos, requires_grad = False) #init as zeros
+        
         out = self.decoder(init_tgt, query_pos, memory, local_window_pos_embed, temporal_pos_embed[Tp:, ...], TS_local_pos_embed, temporal_pos_embed[0:Tp, ...]) #(N, Tf, H, W, embed_dim)
-
+        
+        # tgt, query_pos, memory, local_window_pos_embed, future_query_temporal_pos_embed, TS_local_pos_embed, past_query_temporal_pos_embed)
         out = F.relu_(out.permute(0, 1, 4, 2, 3))
 
         return out, memory
