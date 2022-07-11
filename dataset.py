@@ -31,7 +31,14 @@ def get_dataloader(data_set_name, batch_size, data_set_dir, past_frames = 13, fu
 
 
     elif data_set_name == 'SEVIR':
-  
+        '''
+        current_path = 
+                    "/mnt/server14_hard0/seungju/dataset/SEVIR/vil/STORM",
+                    "/mnt/server14_hard0/seungju/dataset/SEVIR/vil/RANDOM",
+
+        '''
+
+
         dataset_dir = Path(data_set_dir)
         if normalize :
             MEAN = 33.44/255
