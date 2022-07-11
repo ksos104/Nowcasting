@@ -16,7 +16,7 @@ from time import time
 
 import cv2
 
-def get_dataloader(data_set_name, batch_size, data_set_dir, past_frames = 13, future_frames = 12, ngpus = 1, num_workers = 4, eval_mode = False, split='full', normalize = True):
+def get_dataloader(data_set_name, batch_size, data_set_dir, past_frames = 13, future_frames = 12, ngpus = 1, num_workers = 4, eval_mode = False, split='full', normalize = True ):
     if data_set_name == 'KTPW':
         dataset_dir = Path(data_set_dir)
         renorm_transform = VidReNormalize(mean = 0., std = 1.0)        
