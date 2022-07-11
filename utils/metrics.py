@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from torch import Tensor
 from typing import Union
 
-from zmq import POLLITEMS_DFLT
+# from zmq import POLLITEMS_DFLT
 from .train_summary import load_ckpt
 
 import numpy as np
