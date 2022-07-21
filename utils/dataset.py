@@ -9,14 +9,14 @@ import numpy as np
 from PIL import Image
 from pathlib import Path
 from typing import Tuple,List
-import os
+import os, pdb
 from tqdm import tqdm
 import random
 from time import time
 
 import cv2
 
-def get_dataloader(data_set_name, batch_size, data_set_dir, past_frames = 13, future_frames = 12, ngpus = 1, num_workers = 4, eval_mode = False, split='full'):
+def get_dataloader(data_set_name, batch_size, data_set_dir, past_frames = 13, future_frames = 12, ngpus = 1, num_workers = 4, eval_mode = False, split='full', normalize = True ):
     if data_set_name == 'KTPW':
         dataset_dir = Path(data_set_dir)
         renorm_transform = VidReNormalize(mean = 0., std = 1.0)        
@@ -28,6 +28,32 @@ def get_dataloader(data_set_name, batch_size, data_set_dir, past_frames = 13, fu
         if eval_mode == False:
             train_set = KTPWDataset(dataset_dir, train_transform,past_frames,future_frames,split='train')
         val_set = KTPWDataset(dataset_dir,test_transform, past_frames,future_frames,split)
+
+
+    elif data_set_name == 'SEVIR':
+        '''
+        current_path = 
+                    "/mnt/server14_hard0/seungju/dataset/SEVIR/vil/STORM",
+                    "/mnt/server14_hard0/seungju/dataset/SEVIR/vil/RANDOM",
+        '''
+
+
+        dataset_dir = Path(data_set_dir)
+        if normalize :
+            MEAN = 33.44/255
+            SCALE= 47.54/255
+            transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((MEAN), (SCALE))
+        ])
+        else :
+            transform = transforms.Compose([
+            transforms.ToTensor()
+        ])
+        print("eval_mode : ",eval_mode)
+        if eval_mode == False:
+            train_set = SEVIRDataset(dataset_dir,transform, past_frames,future_frames,split='train')
+        val_set = SEVIRDataset(dataset_dir,transform, past_frames,future_frames,split='val')
 
     N = batch_size
     if eval_mode == False:
@@ -46,7 +72,53 @@ def get_dataloader(data_set_name, batch_size, data_set_dir, past_frames = 13, fu
         val_sampler = torch.utils.data.distributed.DistributedSampler(val_set)
         val_loader = DataLoader(val_set, batch_size=N, shuffle=False, pin_memory=True, num_workers=num_workers, sampler=val_sampler, drop_last = True)
 
-    return train_loader, val_loader, renorm_transform
+    return train_loader, val_loader
+
+class SEVIRDataset(Dataset):
+    def __init__(self, data_path, transform,
+                 num_past_frames=13, num_future_frames=12,split='train'):
+        """
+        Args:
+            data_path --- data folder path
+            transfrom --- torchvision transforms for the image
+            num_past_frames
+            num_future_frames
+        Return batched Sample:
+            past_clip --- Tensor with shape (batch_size, num_past_frames, C, H, W)
+            future_clip --- Tensor with shape (batch_size, num_future_frames, C, H, W)
+            division --- 'STROM' or 'RANDOM' currently. 
+        """
+        self.data_path = os.path.join(data_path, split)
+        self.img_names = [os.path.join(self.data_path,f) for f in os.listdir(self.data_path)]
+        self.num_past_frames = num_past_frames
+        self.num_future_frames = num_future_frames
+        self.transform = transform
+        
+        if not self.img_names:
+            raise Exception(f"No data found in {self.data_path}")
+        print(f"Found {len(self.img_names)} SEVIR sequences.")
+
+
+    def __len__(self) -> int:
+        return len(self.img_names)
+    
+    def __getitem__(self, index: int) -> Tuple[Tensor, Tensor]:
+        """
+        Returns:
+            past_clip: Tensor with shape (num_past_frames, C, H, W)
+            future_clip: Tensor with shape (num_future_frames, C, H, W)
+        """
+        vid_path = self.img_names[index]
+        full_clip = np.load(vid_path)
+        
+        if self.transform:
+            full_clip = self.transform(full_clip)
+
+        past_clip = full_clip[:self.num_past_frames, ...]
+        future_clip = full_clip[self.num_past_frames:, ...]
+
+        return past_clip, future_clip
+
 
 class KTPWDataset(Dataset):
     def __init__(self, data_path, transform,
